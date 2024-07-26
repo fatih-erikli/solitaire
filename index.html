@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Solitaire</title>
+    <style>
+      body {
+        background-color: #ddd;
+        font-family: sans-serif;
+        font-size: 14px;
+      }
+      #game {
+        width: 960px;
+        float: left;
+      }
+      #score {
+        float: left;
+        width: 240px;
+        padding: 10px 20px;
+      }
+      .card {
+        border: 3px solid white;
+        border-radius: 15px;
+        background-color: #fff;
+        position: relative;
+        padding: 8px 28px;
+        font-size: 14px;
+        text-transform: uppercase;
+        box-sizing: border-box;
+        height: 180px;
+      }
+      .deck {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .deck > :not(.deck > :first-child) {
+        margin-top: -170px;
+      }
+      .ordered-slot > :not(.ordered-slot > :first-child), .stockpile-current > :not(.stockpile-current > :first-child) {
+        margin-top: -178px;
+      }
+      .ordered-slot:empty {
+        background: #cbcbcb;
+        border-radius: 15px;
+        height: 180px;
+      }
+      .diamond, .heart {
+        color: red;
+      }
+      .card:before,
+      .card:after {
+        position: absolute;
+      }
+      .diamond:before, .diamond:after {
+        content: "\2666";
+      }
+      .diamond:before, .diamond:after {
+        content: "\2666";
+      }
+      .heart:before, .heart:after {
+        content: "\2665";
+      }
+      .spade:before, .spade:after {
+        content: "\2660";
+      }
+      .club:before, .club:after {
+        content: "\2663";
+      }
+      .card:before {
+        top: 6px;
+        left: 10px;
+      }
+      .card:after {
+        bottom: 6px;
+        right: 10px;
+      }
+      #game {
+        display: grid;
+        grid-template-rows: minmax(min-content, 200px) 1fr;
+        grid-template-columns: 1fr 1fr 1fr 1fr 1fr 1fr 1fr;
+        gap: 10px;
+      }
+      .ordered-slot.a {
+        grid-column-start: 4;
+        grid-column-end: 5;
+      }
+      .backface {
+        background-color: #abc3d0;
+      }
+      .ghost-deck {
+        position: absolute;
+      }
+      .card:not(.backface, .stockpile-current .card, .ordered-slot .card, .deck:not(.ghost-deck) :first-child):not(.backface + :not(.backface)) {
+        box-shadow: 0 -1px rgba(0, 0, 0, 0.2);
+      }
+      .ordered-slot .card:not(.ordered-slot > :first-child), .stockpile-current .card:not(.stockpile-current > :first-child) {
+        box-shadow: 0 -1px rgba(0, 0, 0, 0.2);
+      }
+      .ghost-deck .card {
+        background-color: #fafafa;
+        border-color: #fafafa;
+      }
+      #set {
+        float: left;
+        width: 250px;
+        padding: 10px 20px;
+      }
+      a:visited {
+        color: rgb(160, 58, 82);
+      }
+      a {
+        color: black;
+        text-decoration: none;
+      }
+      .set-list {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .best {
+        color: #888;
+        display: flex;
+        gap: 5px;
+      }
+    </style>
+  </head>
+  <body>
+  <div id="game">
+  </div>
+  <div id="score">
+    <span id="moves">0</span> moves
+  </div>
+  <div id="set">
+    <h3>Load a set</h3>
+  </div>
+  <script>
+    const cardNames = ["a", , , , , , , , , , "j", "q", "k"];
+    const types = ["diamond", "club", "heart", "spade"];
+    const stockpile = [];
+
+    for (let i = 0; i <= 12; i++) {
+      for (let t = 0; t < types.length; t++) {
+        stockpile.push([t, i]);
+      }
+    }
+
+    let removeEventListeners = startSet(stockpile);
+
+    function loadSet(set) {
+      removeEventListeners();
+      const game = document.querySelector("#game");
+      while (game.children.length) {
+        game.removeChild(game.children[0]);
+      }
+      removeEventListeners = startSet(set);
+    }
+
+    function fetchSet(hash) {
+      return fetch(hash.slice(1)).then(function (r) {return r.json()})
+    }
+
+    window.addEventListener("DOMContentLoaded", function () {
+      const hash = window.location.hash;
+      if (hash) {
+        fetchSet(hash).then(loadSet);
+      }
+    })
+
+    fetch("index.json").then(function (r) {
+      return r.json()
+    }).then(function (index) {
+      const setList = document.createElement("div");
+      setList.classList.add("set-list");
+      if (index.length == 0) {
+        setList.innerText = "No set available";
+      } else {
+        for (let i = 0; i < index.length; i++) {
+          const set = document.createElement("div");
+          const a = document.createElement("a");
+          a.setAttribute("href", `#${index[i]}.json`);
+          a.addEventListener("click", function (event) {
+            fetchSet(a.getAttribute("href")).then(loadSet);
+          });
+          const bestScore = localStorage.getItem(index[i]) || "No win.";
+          a.innerText = index[i];
+          set.appendChild(a);
+          setList.appendChild(set);
+          const best = document.createElement("div");
+          best.classList.add("best");
+          best.appendChild(document.createTextNode(`Best `))
+          const bestScoreElement = document.createElement("div");
+          bestScoreElement.innerText = bestScore;
+          best.appendChild(bestScoreElement);
+          set.appendChild(best);
+        }
+      }
+      document.querySelector("#set").appendChild(setList);
+    });
+
+    function startSet(stockpile) {
+      let moves = 0;
+      document.querySelector("#moves").innerText = moves;
+      const stockpileCurrent = [];
+      const slots = [];
+      const decks = [];
+      for (let i = 0; i <= 3; i++) {
+        slots.push([]);
+      }
+      for (let i = 0; i <= 6; i++) {
+        const deck = [];
+        for (let j = 0; j < i + 1; j++) {
+          deck.push(stockpile.pop())
+        }
+        decks.push(deck);
+      }
+      function createCardBackfaceElement() {
+        const cardElement = document.createElement("div");
+        cardElement.classList.add("card");
+        cardElement.classList.add("backface");
+        return cardElement;
+      }
+      function createCardElement([type, index]) {
+        const cardElement = document.createElement("div");
+        cardElement.classList.add(types[type]);
+        cardElement.classList.add("card");
+        let text;
+        if (cardNames[index]) {
+          const name = cardNames[index];
+          cardElement.classList.add(name);
+          text = name;
+        } else {
+          text = index + 1;
+        }
+        cardElement.appendChild(document.createTextNode(text));
+        return cardElement;
+      }
+      const gameElement = document.getElementById("game");
+      const stockpileElement = document.createElement("div");
+      stockpileElement.classList.add("stockpile");
+      gameElement.appendChild(stockpileElement);
+      stockpileElement.appendChild(createCardBackfaceElement());
+      const stockpileCurrentElement = document.createElement("div");
+      stockpileCurrentElement.classList.add("stockpile-current");
+      gameElement.appendChild(stockpileCurrentElement);
+      const slotElements = [];
+      for (let i = 0; i < slots.length; i++) {
+        const slotElement = document.createElement("div");
+        slotElement.classList.add("ordered-slot");
+        slotElement.classList.add(["a", "b", "c", "d"][i]);
+        gameElement.appendChild(slotElement);
+        slotElements.push(slotElement);
+      }
+      const deckElements = [];
+      for (let i = 0; i < decks.length; i++) {
+        const deckElement = document.createElement("div");
+        deckElement.classList.add("deck");
+        gameElement.appendChild(deckElement);
+        deckElements.push(deckElement);
+      }
+      for (let i = 0; i < deckElements.length; i++) {
+        for (let j = 0; j < decks[i].length; j++) {
+          let cardElement;
+          if (j == decks[i].length - 1) {
+            cardElement = createCardElement(decks[i][j]);
+          } else {
+            cardElement = createCardBackfaceElement();
+          }
+          deckElements[i].appendChild(cardElement);
+        }
+      }
+      function createGhostDeck(width, x, y, cards) {
+        const deck = document.createElement("div");
+        deck.classList.add("deck");
+        deck.classList.add("ghost-deck");
+        for (let i = 0; i < cards.length; i++) {
+          deck.appendChild(createCardElement(cards[i]));
+        }
+        deck.style.width = `${width}px`;
+        deck.style.left = `${x}px`;
+        deck.style.top = `${y}px`;
+        return deck;
+      }
+      function undoHand() {
+        if (hand["type"] == "deck") {
+          for (let i = 0; i < hand["cards"].length; i++) {
+            deckElements[hand["index"]].appendChild(createCardElement(hand["cards"][i]));
+          }
+        } else {
+          if (hand["type"] == "ordered-slot") {
+            slotElements[hand["index"]].appendChild(createCardElement(hand["cards"][0]));
+          } else {
+            if (hand["type"] == "stockpile") {
+              stockpileCurrentElement.appendChild(createCardElement(stockpileCurrent[stockpileCurrent.length - 1]));
+            }
+          }
+        }
+      }
+      function flipFromDeck() {
+        if (decks[hand["index"]].length) {
+          deckElements[hand["index"]].children[deckElements[hand["index"]].children.length - 1].replaceWith(createCardElement(decks[hand["index"]][decks[hand["index"]].length - 1]))
+        }
+      }
+      function incMoves() {
+        moves += 1
+        document.querySelector("#moves").innerText = moves;
+        let total = 0;
+        for (let i = 0; i < slots.length; i++) {
+          total += slots[i].length;
+        }
+        if (total == 52) {
+          const hash = window.location.hash.slice(1).split(".")[0];
+          if (hash) {
+            const scoreStored = localStorage.getItem(hash);
+            let scoreNew;
+            if (scoreStored) {
+              scoreNew = Math.min(parseInt(scoreStored), moves);
+            } else {
+              scoreNew = moves;
+            }
+            localStorage.setItem(hash, scoreNew);
+          }
+        }
+      }
+      function isValidDeckMove(card, deck) {
+        if (!deck.length) {
+          return card[1] == 12;
+        }
+        const validPairs = {
+          "diamond": ["club", "spade"],
+          "club": ["diamond", "heart"],
+          "heart": ["club", "spade"],
+          "spade": ["heart", "diamond"],
+        };
+        const cardType = types[card[0]]; // ["diamond", "club", "heart", "spade"];
+        const cardInDeck = deck[deck.length - 1];
+        const cardInDeckType = types[cardInDeck[0]];
+        if (validPairs[cardType].includes(cardInDeckType)) {
+          return cardInDeck[1] - card[1] == 1;
+        } else {
+          return false;
+        }
+      }
+      function isValidSlotMove(card, slot) {
+        if (slot.length == 0) {
+          return card[1] == 0;
+        } else {
+          const cardInSlot = slot[slot.length - 1];
+          return cardInSlot[0] == card[0] && card[1] - cardInSlot[1] == 1;
+        }
+      }
+      let dragStartedAt;
+      let hand;
+      function onMouseMove(event) {
+        if (typeof dragStartedAt != "undefined") {
+          const ghostElement = document.querySelector(".ghost-deck");
+          const x = dragStartedAt.ghostX + (event.clientX - dragStartedAt.cursorX);
+          const y = dragStartedAt.ghostY + (event.clientY - dragStartedAt.cursorY);
+          ghostElement.style.left = `${x}px`;
+          ghostElement.style.top = `${y}px`;
+        }
+      }
+      function onMouseUp(event) {
+        if (typeof dragStartedAt != "undefined") {
+          dragStartedAt = undefined;
+          const ghostElement = document.querySelector(".ghost-deck");
+          const rects = [];
+          for (let i = 0; i < slotElements.length; i++) {
+            const slotElement = slotElements[i];
+            const boundingClientRect = slotElement.getBoundingClientRect();
+            rects.push({
+              left: boundingClientRect.left,
+              right: boundingClientRect.right,
+              top: boundingClientRect.top,
+              bottom: boundingClientRect.bottom,
+              type: "ordered-slot",
+              index: findIndex(slotElements, slotElement)
+            });
+          }
+          for (let i = 0; i < deckElements.length; i++) {
+            const deckElement = deckElements[i];
+            const boundingClientRect = deckElement.getBoundingClientRect();
+            rects.push({
+              left: boundingClientRect.left,
+              right: boundingClientRect.right,
+              top: boundingClientRect.top,
+              bottom: boundingClientRect.bottom,
+              type: "deck",
+              index: findIndex(deckElements, deckElement)
+            });
+          }
+          const cardInDeck = ghostElement.children[0];
+          const intersections = [];
+          for (let i = 0; i < rects.length; i++) {
+            const intersection = rectIntersection(cardInDeck.getBoundingClientRect(), rects[i]);
+            if (intersection) {
+              intersections.push({...rects[i], ...intersection});
+            }
+          }
+          if (intersections.length) {
+            let largestIntersection;
+            for (let i = 0; i < intersections.length; i++) {
+              const intersection = intersections[i];
+              if (largestIntersection) {
+                if (rectArea(intersection) > rectArea(largestIntersection)) {
+                  largestIntersection = intersection;
+                }
+              } else {
+                largestIntersection = intersection;
+              }
+            }
+            if (hand["type"] == "deck") {
+              if (largestIntersection["type"] == "deck") {
+                if (isValidDeckMove(hand["cards"][0], decks[largestIntersection["index"]])) {
+                  for (let i = 0; i < hand["cards"].length; i++) {
+                    deckElements[largestIntersection["index"]].appendChild(createCardElement(hand["cards"][i]));
+                    decks[largestIntersection["index"]].push(hand["cards"][i]);
+                    decks[hand["index"]].pop();
+                  }
+                  flipFromDeck();
+                  incMoves();
+                } else {
+                  undoHand();
+                }
+              } else {
+                if (isValidSlotMove(hand["cards"][0], slots[largestIntersection["index"]])) {
+                  if (hand["cards"].length == 1) {
+                    slotElements[largestIntersection["index"]].appendChild(createCardElement(hand["cards"][0]));
+                    decks[hand["index"]].pop();
+                    slots[largestIntersection["index"]].push(hand["cards"][0]);
+                    flipFromDeck();
+                    incMoves();
+                  } else {
+                    undoHand();
+                  }
+                } else {
+                  undoHand();
+                }
+              }
+            } else {
+              if (hand["type"] == "ordered-slot") {
+                if (largestIntersection["type"] == "deck") {
+                  if (isValidDeckMove(hand["cards"][0], decks[largestIntersection["index"]])) {
+                    deckElements[largestIntersection["index"]].appendChild(createCardElement(hand["cards"][0]));
+                    decks[largestIntersection["index"]].push(slots[hand["index"]].pop());
+                    incMoves();
+                  } else {
+                    undoHand();
+                  }
+                } else {
+                  if (slots[largestIntersection["index"]].length == 0) {
+                    slotElements[largestIntersection["index"]].appendChild(createCardElement(hand["cards"][0]));
+                    slots[largestIntersection["index"]].push(slots[hand["index"]].pop());
+                  } else {
+                    undoHand();
+                  }
+                }
+              } else {
+                const card = stockpileCurrent[stockpileCurrent.length - 1];
+                if (largestIntersection["type"] == "deck") {
+                  if (isValidDeckMove(card, decks[largestIntersection["index"]])) {
+                    const card = stockpileCurrent.pop();
+                    decks[largestIntersection["index"]].push(card);
+                    deckElements[largestIntersection["index"]].appendChild(createCardElement(card));
+                    incMoves();
+                  } else {
+                    undoHand();
+                  }
+                } else {
+                  if (isValidSlotMove(stockpileCurrent[stockpileCurrent.length - 1], slots[largestIntersection["index"]])) {
+                    const card = stockpileCurrent.pop();
+                    slotElements[largestIntersection["index"]].appendChild(createCardElement(card));
+                    slots[largestIntersection["index"]].push(card);
+                    incMoves();
+                  } else {
+                    undoHand();
+                  }
+                }
+              }
+            }
+          } else {
+            undoHand();
+          }
+          hand = undefined;
+          ghostElement.parentElement.removeChild(ghostElement);
+        }
+      }
+      function onClick(event) {
+        if (stockpile.length) {
+          const card = stockpile.pop();
+          const cardElement = createCardElement(card);
+          stockpileCurrent.push(card);
+          stockpileCurrentElement.appendChild(cardElement);
+          if (!stockpile.length) {
+            stockpileElement.removeChild(stockpileElement.children[0]);
+          }
+        } else {
+          if (stockpileCurrent.length) {
+            while (stockpileCurrent.length) {
+              stockpile.push(stockpileCurrent.pop());
+              stockpileCurrentElement.removeChild(stockpileCurrentElement.children[0]);
+            }
+            stockpileElement.appendChild(createCardBackfaceElement());
+          }
+        }
+      }
+      function onMouseDown(event) {
+        const target = event.target;
+        const parent = event.target.parentElement;
+        if (!target.classList.contains("card")) {
+          return;
+        }
+        if (target.classList.contains("backface")) {
+          return;
+        }
+        const boundingClientRect = event.target.getBoundingClientRect();
+        const deck = [];
+        if (parent.classList.contains("deck")) {
+          const cardIndex = findIndex(parent.querySelectorAll(".card"), target);
+          const deckIndex = findIndex(gameElement.querySelectorAll(".deck"), parent);
+          for (let i = cardIndex; i < decks[deckIndex].length; i++) {
+            deck.push(decks[deckIndex][i]);
+            parent.removeChild(parent.children[cardIndex])
+          }
+          hand = {
+            "type": "deck",
+            "index": deckIndex,
+            "cards": deck
+          };
+        } else {
+          if (parent.classList.contains("ordered-slot")) {
+            const slotIndex = findIndex(slotElements, parent);
+            const cardIndex = slots[slotIndex].length - 1;
+            deck.push(slots[slotIndex][cardIndex]);
+            hand = {
+              "type": "ordered-slot",
+              "index": slotIndex,
+              "cards": deck,
+            };
+            parent.removeChild(target);
+          } else {
+            hand = { "type": "stockpile" };
+            parent.removeChild(target);
+            deck.push(stockpileCurrent[stockpileCurrent.length - 1]);
+          }
+        }
+        dragStartedAt = {
+          ghostX: boundingClientRect.x,
+          ghostY: boundingClientRect.y,
+          cursorX: event.clientX,
+          cursorY: event.clientY
+        };
+        const ghostElement = createGhostDeck(boundingClientRect.width, dragStartedAt.ghostX, dragStartedAt.ghostY, deck);
+        document.body.appendChild(ghostElement);
+      }
+      document.querySelector("body").addEventListener("mousemove", onMouseMove);
+      document.querySelector("body").addEventListener("mouseup", onMouseUp);
+      stockpileElement.addEventListener("click", onClick);
+      document.querySelector("body").addEventListener("mousedown", onMouseDown);
+      return function() {
+        document.querySelector("body").removeEventListener("mousemove", onMouseMove);
+        document.querySelector("body").removeEventListener("mouseup", onMouseUp);
+        stockpileElement.removeEventListener("click", onClick);
+        document.querySelector("body").removeEventListener("mousedown", onMouseDown);
+      };
+    }
+    function findIndex(nodeList, element) {
+      for (let i = 0; i < nodeList.length; i++) {
+        if (nodeList[i] == element) {
+          return i;
+        }
+      }
+    }
+    function rectIntersection(rect1, rect2) {
+      const xMin = Math.max(rect1.left, rect2.left);
+      const yMin = Math.max(rect1.top, rect2.top);
+      const xMax = Math.min(rect1.right, rect2.right);
+      const yMax = Math.min(rect1.bottom, rect2.bottom);
+      if (xMin > xMax || yMin > yMax) {
+        return;
+      }
+      return { left: xMin, top: yMin, right: xMax, bottom: yMax };
+    }
+    function rectArea(rect) {
+      return Math.abs(rect.right - rect.left) * Math.abs(rect.bottom - rect.top);
+    }
+  </script>
+  </body>
+</html>
