@@ -166,23 +166,24 @@
       }
     })
 
-    fetch("index.json").then(function (r) {
-      return r.json()
-    }).then(function (index) {
+    fetch("sets").then(function (r) {
+      return r.text()
+    }).then(function (text) {
+      const rows = text.split("\n");
       const setList = document.createElement("div");
       setList.classList.add("set-list");
-      if (index.length == 0) {
+      if (rows.length == 0) {
         setList.innerText = "No set available";
       } else {
-        for (let i = 0; i < index.length; i++) {
+        for (let i = 0; i < rows.length - 1; i++) {
           const set = document.createElement("div");
           const a = document.createElement("a");
-          a.setAttribute("href", `#${index[i]}.json`);
+          a.setAttribute("href", `#${rows[i]}.json`);
           a.addEventListener("click", function (event) {
             fetchSet(a.getAttribute("href")).then(loadSet);
           });
-          const bestScore = localStorage.getItem(index[i]) || "No win.";
-          a.innerText = index[i];
+          const bestScore = localStorage.getItem(rows[i]) || "No win.";
+          a.innerText = rows[i];
           set.appendChild(a);
           setList.appendChild(set);
           const best = document.createElement("div");
