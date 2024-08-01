@@ -137,6 +137,7 @@
     const cardNames = ["a", , , , , , , , , , "j", "q", "k"];
     const types = ["diamond", "club", "heart", "spade"];
     const stockpile = [];
+    let sets = [];
 
     for (let i = 0; i <= 12; i++) {
       for (let t = 0; t < types.length; t++) {
@@ -170,20 +171,48 @@
       return r.text()
     }).then(function (text) {
       const rows = text.split("\n");
+      for (let i = 0; i < rows.length - 1; i++) {
+        const setName = rows[i];
+        const score = localStorage.getItem(setName);
+        const set = [setName];
+        if (score) {
+          set.push(parseInt(score));
+        }
+        sets.push(set);
+      }
+      orderSets();
+      updateSets();
+    });
+
+    function orderSets() {
+      const setsNew = [];
+      const setsWithScore = sets.filter(function (set) {return set[1]});
+      setsWithScore.sort(function (a, b) {return a[1] - b[1]});
+      for (let i = 0; i < sets.length; i++) {
+        if (sets[i][1]) {
+          setsNew.unshift(setsWithScore.pop())
+        } else {
+          setsNew.push(sets[i])
+        }
+      }
+      sets = setsNew;
+    };
+
+    function updateSets() {
       const setList = document.createElement("div");
       setList.classList.add("set-list");
-      if (rows.length == 0) {
-        setList.innerText = "No set available";
+      if (sets.length == 0) {
+        setList.appendChild(document.createTextNode("No set available"));
       } else {
-        for (let i = 0; i < rows.length - 1; i++) {
+        for (let i = 0; i < sets.length; i++) {
           const set = document.createElement("div");
           const a = document.createElement("a");
-          a.setAttribute("href", `#${rows[i]}.json`);
+          a.setAttribute("href", `#${sets[i][0]}.json`);
           a.addEventListener("click", function (event) {
             fetchSet(a.getAttribute("href")).then(loadSet);
           });
-          const bestScore = localStorage.getItem(rows[i]) || "No win.";
-          a.innerText = rows[i];
+          const bestScore = sets[i][1] || "No win.";
+          a.innerText = sets[i][0];
           set.appendChild(a);
           setList.appendChild(set);
           const best = document.createElement("div");
@@ -195,8 +224,12 @@
           set.appendChild(best);
         }
       }
-      document.querySelector("#set").appendChild(setList);
-    });
+      if (document.querySelector(".set-list")) {
+        document.querySelector(".set-list").replaceWith(setList)
+      } else {
+        document.querySelector("#set").appendChild(setList);
+      }
+    }
 
     function startSet(stockpile) {
       let moves = 0;
@@ -308,7 +341,7 @@
         for (let i = 0; i < slots.length; i++) {
           total += slots[i].length;
         }
-        if (total == 52) {
+        if (total == 2) {
           const hash = window.location.hash.slice(1).split(".")[0];
           if (hash) {
             const scoreStored = localStorage.getItem(hash);
@@ -319,6 +352,9 @@
               scoreNew = moves;
             }
             localStorage.setItem(hash, scoreNew);
+            sets[sets.findIndex(function (set) {return set[0] == hash})][1] = scoreNew;
+            orderSets();
+            updateSets();
           }
         }
       }
