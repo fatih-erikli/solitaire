@@ -145,10 +145,12 @@
       }
     }
 
-    let removeEventListeners = startSet(stockpile);
+    let removeEventListeners;
 
     function loadSet(set) {
-      removeEventListeners();
+      if (removeEventListeners) {
+        removeEventListeners();
+      }
       const game = document.querySelector("#game");
       while (game.children.length) {
         game.removeChild(game.children[0]);
@@ -164,6 +166,8 @@
       const hash = window.location.hash;
       if (hash) {
         fetchSet(hash).then(loadSet);
+      } else {
+        removeEventListeners = startSet(stockpile);
       }
     })
 
